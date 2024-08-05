@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Guest Check-In</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.17.3/xlsx.full.min.js"></script>
+    <script>
+        let guestData = null;
+        let workbook = null;
+
+        async function readExcelFile() {
+            const fileUrl = 'Список.xlsx'; // Убедитесь, что путь к файлу правильный
+            const response = await fetch(fileUrl);
+            const arrayBuffer = await response.arrayBuffer();
+            const data = new Uint8Array(arrayBuffer);
+            workbook = XLSX.read(data, { type: 'array' });
+            const sheetName = workbook.SheetNames[0]; // Используем первый лист
+            const sheet = workbook.Sheets[sheetName];
+            guestData = XLSX.utils.sheet_to_json(sheet);
+            
+            const urlParams = new URLSearchParams(window.location.search);
+            const guestID = urlParams.get('guestID');
+            
+            if (guestID) {
+                const guest = guestData.find(row => row.ID == guestID);
+                if (guest) {
+                    document.getElementById('guest-info').innerText = 'Имя: ' + guest.Имя + ', Фамилия: ' + guest.Фамилия;
+                    document.getElementById('guestID').value = guestID;
+                } else {
+                    document.getElementById('guest-info').innerText = 'Гость не найден.';
+                }
+            } else {
+                document.getElementById('guest-info').innerText = 'ID гостя не указан.';
+            }
+        }
+
+        function markAsCheckedIn() {
+            const guestID = document.getElementById('guestID').value;
+            if (guestData && guestID) {
+                const guest = guestData.find(row => row.ID == guestID);
+                if (guest) {
+                    // Создание нового листа для отмеченных гостей
+                    const checkInSheetName = 'CheckedIn';
+                    let checkInSheet = workbook.Sheets[checkInSheetName];
+                    if (!checkInSheet) {
+                        checkInSheet = XLSX.utils.json_to_sheet([]);
+                        XLSX.utils.book_append_sheet(workbook, checkInSheet, checkInSheetName);
+                    }
+
+                    // Добавление информации о прибытии
+                    const newRow = [guestID, guest.Имя, guest.Фамилия, new Date().toLocaleString()];
+                    const existingData = XLSX.utils.sheet_to_json(checkInSheet, { header: 1 });
+                    existingData.push(newRow);
+                    XLSX.utils.sheet_add_aoa(checkInSheet, existingData, { origin: 'A1' });
+
+                    // Сохранение файла
+                    const wbout = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
+                    const blob = new Blob([wbout], { type: 'application/octet-stream' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'Список_с_прибытиями.xlsx';
+                    a.click();
+                    URL.revokeObjectURL(url);
+
+                    document.getElementById('report').innerText = 'Прибытие отмечено.';
+                } else {
+                    document.getElementById('report').innerText = 'Гость не найден.';
+                }
+            }
+        }
+
+        window.onload = readExcelFile;
+    </script>
+</head>
+<body>
+    <h1>Проверка гостя</h1>
+    <p id="guest-info">Загрузка...</p>
+    <input type="hidden" id="guestID">
+    <button onclick="markAsCheckedIn()">Прибыл</button>
+    <p id="report"></p>
+</body>
+</html>
